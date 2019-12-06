@@ -1,7 +1,10 @@
 #include <iostream>
 #include <vector> 
 #include<fstream>
+#include<WS2tcpip.h>
+#include <thread> 
 #include<sstream>
+#pragma comment(lib, "Ws2_32.lib")
 
 using namespace std;
 
@@ -16,7 +19,7 @@ public:
 	File(string fname)
 	{
 		this->fileName = fname;
-		ptr = 0;
+		this->ptr = 0;
 	}
 
 	void rename(string newName)
@@ -57,15 +60,15 @@ public:
 
 	void readFile(fstream& fin)
 	{
-		getline(fin,this->fileName);
+		getline(fin, this->fileName);
 
 		string num;
 		getline(fin, num);
-		this->ptr =  stoi(num);
+		this->ptr = stoi(num);
 
 		getline(fin, num);
 		int n = stoi(num);
-		
+
 		string pg_num;
 		for (int i = 0; i < n; i++)
 		{
@@ -155,7 +158,7 @@ public:
 class Tree
 {
 private:
-	Dir* root, *curr;
+	Dir* root, * curr;
 	string path;
 public:
 	Tree()
@@ -164,17 +167,17 @@ public:
 		path.append("root:\\");
 	}
 
-	void createDir(string dirName)
+	int createDir(string dirName)
 	{
 		vector<Dir*> dirs = this->curr->getChildren();
 		for (int i = 0; i < dirs.size(); i++)
 			if (dirs[i]->getName().compare(dirName) == 0)
-			{
-				cout << "Direcory alread exists" << endl;
-				return;
-			}
+				return 0;
+			
 		Dir* dir = new Dir(dirName);
 		curr->addSubDir(dir);
+
+		return 1;
 	}
 
 	void changeDir(string dirName)
@@ -202,14 +205,14 @@ public:
 		for (auto i = files.begin(); i != files.end(); i++)
 			if ((*i)->getName().compare(fileName) == 0)
 				return (*i);
-			
-		
+
+
 		return NULL;
 	}
 
 	void deleteFile(string fileName)
 	{
-curr->deleteFile(fileName);
+		curr->deleteFile(fileName);
 	}
 
 	void writeTree(fstream& fout)
@@ -244,12 +247,13 @@ curr->deleteFile(fileName);
 		return curr->getFiles();
 	}
 
-	void memoryMap()
+	string memoryMap()
 	{
-
-		levelOrder(root, "");
+		ostringstream* ss = new ostringstream();
+		levelOrder(root, (*ss), "");
+		return ss->str();
 	}
-	
+
 private:
 	void writetraverse(Dir* current, fstream& fout)
 	{
@@ -301,27 +305,28 @@ private:
 		return current;
 	}
 
-	void levelOrder(Dir* current, string indent)
+	void levelOrder(Dir* current,ostringstream& ss, string indent)
 	{
-		cout << indent << "./" << current->getName()<< endl;
+		ss << indent << "./" << current->getName() << endl;
 
 		vector<File*> files = current->getFiles();
 
 		for (auto i = files.begin(); i != files.end(); i++)
 		{
-			cout << indent << indent << (*i)->getName() << " ";
+			ss << indent << indent << (*i)->getName() << " ";
 			vector<int> pages = (*i)->getPages();
 
 			for (auto j = pages.begin(); j != pages.end(); j++)
-				cout << (*j) << "->";
-			cout << "x" << endl;
+				ss << (*j) << "->";
+			ss << "x" << endl;
 		}
 
 
 		vector<Dir*> children = current->getChildren();
 
 		for (auto i = children.begin(); i != children.end(); i++)
-			levelOrder(*i, indent + " ");
+			levelOrder(*i, ss, indent + " ");
+
 	}
 };
 
@@ -443,7 +448,7 @@ public:
 		return info;
 	}
 
-	string readFrom(fstream& datFile,int start, int size, vector<int> pages, int offset)
+	string readFrom(fstream& datFile, int start, int size, vector<int> pages, int offset)
 	{
 		int max = (pages.size() - 1) * this->PAGE_SIZE + offset;
 		if (start > max || (start + size) > max)
@@ -507,7 +512,7 @@ public:
 			return pages;
 
 		if (l - (max - pos) > 0)
-			info = write(txt.substr(max - pos, -1),datFile, pages, offset);
+			info = write(txt.substr(max - pos, -1), datFile, pages, offset);
 
 		int startPage = pages[pos / this->PAGE_SIZE];
 		int limit = pos % this->PAGE_SIZE;
@@ -582,7 +587,7 @@ public:
 
 		this->tree = new Tree();
 		this->filemanager = new FileManagement(this->TOTAL_PAGES, this->PAGE_SIZE, this->Pages);
-		this->limit = this->PAGE_SIZE*this->TOTAL_PAGES;
+		this->limit = this->PAGE_SIZE * this->TOTAL_PAGES;
 
 		if (stat(this->FILE_NAME.c_str(), &buffer) == -1)
 		{
@@ -590,7 +595,7 @@ public:
 			this->DATFILE.close();
 			this->DATFILE.open(this->FILE_NAME, fstream::in | fstream::out);
 		}
-		
+
 		else
 		{
 			this->DATFILE.open(this->FILE_NAME, fstream::in | fstream::out);
@@ -599,7 +604,7 @@ public:
 			this->tree->readTree(this->DATFILE);
 			this->DATFILE.seekg(0);
 		}
-		
+
 	}
 
 	void createDir(string name)
@@ -624,8 +629,8 @@ public:
 
 
 		File* file = new File(name);
-		vector<int> info = this->filemanager->write(data, this->DATFILE,file->getPages(), 0);
-		
+		vector<int> info = this->filemanager->write(data, this->DATFILE, file->getPages(), 0);
+
 		auto i = info.begin();
 		for (; i != info.end(); i++)
 			if (*i != -1)
@@ -642,7 +647,6 @@ public:
 	{
 		if (!this->tree->fileExists(name))
 		{
-			cout << "File does not exist" << endl;
 			return;
 		}
 
@@ -654,12 +658,12 @@ public:
 		this->tree->deleteFile(name);
 	}
 
-	void readFile(string name, int start = 0, int size = 0)
+	string readFile(string name, int start = 0, int size = 0)
 	{
+		string output = "";
 		if (!this->tree->fileExists(name))
 		{
-			cout << "No scuh file Exists" << endl;
-			return;
+			return output;
 		}
 
 		File* file = this->tree->getFile(name);
@@ -667,10 +671,13 @@ public:
 		vector<int> pages = file->getPages();
 		int offset = file->getEndFilePtr();
 
+		ostringstream ss;
 		if (start == 0 && size == 0)
-			cout << this->filemanager->read(this->DATFILE, pages, offset) << endl;
+			ss << this->filemanager->read(this->DATFILE, pages, offset) << endl;
 		else
-			cout << this->filemanager->readFrom(this->DATFILE, start, size, pages, offset) << endl;
+			ss << this->filemanager->readFrom(this->DATFILE, start, size, pages, offset) << endl;
+
+		return ss.str();
 	}
 
 	void writeToFile(string fname, string data, int at = 0)
@@ -707,17 +714,20 @@ public:
 		file->setPtr(*(++i));
 	}
 
-	void showMemoryMap()
+	string showMemoryMap()
 	{
-		this->tree->memoryMap();
+		return this->tree->memoryMap();
 	}
 
-	void listFiles()
+	string listFiles()
 	{
 		vector<File*> files = this->tree->getCurrFiles();
+		stringstream ss;
 
 		for (auto i = files.begin(); i != files.end(); i++)
-			cout << (*i)->getName() << endl;
+			ss << (*i)->getName() << endl;
+
+		return ss.str();
 	}
 
 	string path()
@@ -754,166 +764,336 @@ private:
 
 };
 
-
-vector<string> getSubStrings(string s)
+class DistributedFileSystem
 {
-	vector<string> tokens;
-	string delimiter = " ";
-	size_t pos = 0;
-	string token;
+private:
+	FileSystem* f;
 
-	while ((pos = s.find(delimiter)) != string::npos) {
-		token = s.substr(0, pos);
-		tokens.push_back(token);
-		s.erase(0, pos + delimiter.length());
+	bool waiting;
+
+	//store data for waiting command
+	vector<string> cmd_data;
+
+
+	//split command from client into space delimeted parts 
+	vector<string> getSubStrings(string s)
+	{
+		vector<string> tokens;
+		string delimiter = " ";
+		size_t pos = 0;
+		string token;
+
+		while ((pos = s.find(delimiter)) != string::npos) {
+			token = s.substr(0, pos);
+			tokens.push_back(token);
+			s.erase(0, pos + delimiter.length());
+		}
+		tokens.push_back(s);
+		return tokens;
 	}
-	tokens.push_back(s);
-	return tokens;
-}
+
+public:
+	DistributedFileSystem()
+	{
+		this->f = new FileSystem();
+		this->waiting = 0;
+	}
+
+	//take command execute it and return the response
+	string execute(string client_req)
+	{
+		vector<string> cmd;
+		stringstream ss;
+
+		//if command is waiting for data, client_req is actually data and need to be passed to command 
+		if (this->waiting)
+		{
+			this->cmd_data.push_back(client_req);
+			cmd = this->cmd_data;
+		}
+		//client_req is a command and should be split
+		else
+			cmd = this->getSubStrings(client_req);
+
+		if (cmd[0].compare("cd") == 0)
+		{
+			f->changeDir(cmd[1]);
+		}
+
+		else if (cmd[0].compare("mkdir") == 0)
+		{
+			f->createDir(cmd[1]);
+		}
+
+		else if (cmd[0].compare("mkfile") == 0)
+		{
+			f->createFile(cmd[1]);
+		}
+
+		else if (cmd[0].compare("delfile") == 0)
+		{
+			f->delFile(cmd[1]);
+		}
+
+		else if (cmd[0].compare("rdfile") == 0)
+		{
+			if (cmd[1].compare("-o") == 0)
+			{
+				ss << f->readFile(cmd[2]);
+			}
+			else if (cmd[1].compare("-of") == 0)
+			{
+				int offset = atoi(cmd[2].c_str());
+				int size = atoi(cmd[3].c_str());
+				ss << f->readFile(cmd[2], offset, size);
+			}
+			else
+				ss << "Invalid Mode" << endl;
+
+		}
+
+		else if (cmd[0].compare("trfile") == 0)
+		{
+			int size = atoi(cmd[2].c_str());
+			f->truncate(cmd[1], size);
+		}
+
+		else if (cmd[0].compare("wrtfile") == 0)
+		{
+			if (cmd[1].compare("-o") == 0)
+			{
+				this->waiting = !this->waiting;
+				if (waiting)
+				{
+					//push current parametrs into vector 
+					this->cmd_data.push_back(cmd[0]);
+					this->cmd_data.push_back(cmd[1]);
+					this->cmd_data.push_back(cmd[2]);
+					//wait for data from client
+					return cmd[2]+": ";
+				}
+				else
+				{
+					f->writeToFile(cmd[2], cmd[3]);
+					this->cmd_data.clear();
+				}
+				
+			}
+			else if (cmd[1].compare("-of") == 0)
+			{
+				this->waiting = !this->waiting;
+				if (waiting)
+				{
+					//push current parametrs into vector 
+					this->cmd_data.push_back(cmd[0]);
+					this->cmd_data.push_back(cmd[1]);
+					this->cmd_data.push_back(cmd[2]);
+					this->cmd_data.push_back(cmd[3]);
+					//wait for data from client
+					return cmd[2] + ": ";
+				}
+				else
+				{
+					f->writeToFile(cmd[2], cmd[4], atoi(cmd[3].c_str()));
+					this->cmd_data.clear();
+				}
+			}
+			else
+				ss << "Invalid Mode" << endl;
+
+		}
+
+		else if (cmd[0].compare("ls") == 0)
+		{
+			ss << f->listFiles();
+		}
+
+		else if (cmd[0].compare("map") == 0)
+		{
+			ss << f->showMemoryMap();
+		}
+
+		else if (cmd[0].compare("exit") == 0)
+		{
+			return "exit";
+		}
+
+		else if (cmd[0].compare("help") == 0)
+		{
+			ss << "Commands provided are:" << endl;
+			ss << "CD\tDisplays the name of or changes the current directory." << endl;
+			ss << "MKDIR\tCreates a directory." << endl;
+			ss << "MKFILE\tCreates a file in the directory." << endl;
+			ss << "DELFILE\tDeletes the file." << endl;
+			ss << "RDFILE\tReads the file" << endl;
+			ss << "TRFILE\tTruncates the files" << endl;
+			ss << "WRTFILE\tWrites to a file." << endl;
+			ss << "LS\tList all the files" << endl;
+			ss << "MAP\tShows the memory mapping." << endl;
+			ss << "CLS\tClear the screen" << endl;
+			ss << "EXIT\tExit the program" << endl;
+		}
+		else if (cmd[0].compare("cls") == 0)
+			return "cls";
+
+		else if (cmd[0].compare(" "))
+			return("<" + this->f->path() + ">");
+		
+		else
+			ss << "'" << cmd[0] << "'" << " is not recognized as an internal or external command, operable program or batch file." << endl;
+
+			ss << "<" << this->f->path() << ">";
+		return ss.str();
+	}
+
+	~DistributedFileSystem()
+	{
+		this->f->~FileSystem();
+	}
+};
+
+class Server
+{
+private:
+	SOCKET serverSocket;
+	int port;
+	DistributedFileSystem* f;
+	//structre of data to pass to serveClient Func
+	struct Data
+	{
+		DistributedFileSystem* fileSystem;
+		SOCKET client;
+	};
+
+public:
+	Server(int port, DistributedFileSystem* f)
+	{
+		this->port = port;
+		this->f = f;
+
+		WSADATA winsockData;
+
+		int didWSAStart = WSAStartup(MAKEWORD(2, 2), &winsockData);
+
+		if (didWSAStart != 0)
+		{
+			cout << "Cannot start WSA" << endl;
+			return;
+		}
+
+		//create a socket
+		this->serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+		//bind the socket to ip and port
+		sockaddr_in sockaddrServer;
+		sockaddrServer.sin_family = AF_INET;
+		sockaddrServer.sin_addr.s_addr = INADDR_ANY;
+		sockaddrServer.sin_port = htons(90);
+
+		int didBind = bind(this->serverSocket, (sockaddr*)&sockaddrServer, sizeof(sockaddrServer));
+
+		if (didBind == SOCKET_ERROR)
+		{
+			cout << "Cannot Bind: " << WSAGetLastError() << endl;
+			return;
+		}
+	}
+
+	void start(int backlog)
+	{
+		//tell the winsock the socket is for listening
+		int islistening = listen(this->serverSocket, backlog); //can handle max acklog clients
+		if (islistening == SOCKET_ERROR)
+		{
+			cout << "Cannot listen: " << WSAGetLastError() << endl;
+			return;
+		}
+
+		//accept connections from client
+		struct sockaddr_in clientSockData;
+		int clientlen = sizeof(clientSockData);
+		SOCKET clientSocket;
+		
+		int i = 0;
+
+		while (clientSocket = accept(this->serverSocket, (sockaddr*)&clientSockData, &clientlen))
+		{
+			if (i++ == 4)
+				break;
+			//make struct to pass data to thread
+			Data* d = new Data;
+			d->client = clientSocket;
+			d->fileSystem = new DistributedFileSystem();
+			cout << "In main thread " << d->client << " connected" << endl;
+
+			//make new thread and pass client data to the thread
+			_beginthreadex(0, 0, serveClient, (void*)d, 0, 0);
+		}
+	}
+
+private:
+
+	static unsigned __stdcall serveClient(void* data)
+	{
+		//destructring data passed
+		Data* d = (Data*)data;
+		SOCKET client = d->client;
+		DistributedFileSystem* fileSystem = d->fileSystem;
+
+		char recvBuffer[4096];
+		string res;
+
+		try {
+			res = fileSystem->execute(" ");
+		}
+		catch (exception e)
+		{
+			res = e.what();
+		}
+
+		send(client, res.c_str(), res.length(), 0);
+
+		while (true)
+		{
+			cout << "In thread: " << client << endl;
+
+			ZeroMemory(recvBuffer, 4096);
+			int bytes = recv(client, recvBuffer, 4096, 0);
+
+			res = fileSystem->execute(recvBuffer);
+			if (bytes <= 0)
+			{
+				//drop the client
+				cout << client << " dropped";
+				closesocket(client);
+				break;
+			}
+			else
+			{
+				//return response from exceute function
+				int didsend = send(client, res.c_str(), res.length(), 0);
+			}
+		}
+		fileSystem->~DistributedFileSystem();
+		return 0;
+	}
+
+
+};
 
 int main()
 {
-	FileSystem* f = new FileSystem();
+	DistributedFileSystem* f = new DistributedFileSystem();
+	int port = 90;
 
-	string s;
-	
-	while (1) {
-		cout << "<" << f->path() << ">";
-		getline(cin, s);
+	Server* s = new Server(port, f);
+	s->start(4);
 
-		vector<string> command = getSubStrings(s);
-
-		if (command[0].compare("cd") == 0) {
-			f->changeDir(command[1]);
-		}
-
-		else if (command[0].compare("mkdir") == 0) {
-			f->createDir(command[1]);
-		}
-
-		else if (command[0].compare("mkfile") == 0) {
-			f->createFile(command[1]);
-		}
-
-		else if (command[0].compare("delfile") == 0) {
-			f->delFile(command[1]);
-		}
-
-		else if (command[0].compare("rdfile") == 0) {
-			if (command[1].compare("-o") == 0) {
-				f->readFile(command[2]);
-			}
-			else if (command[1].compare("-of") == 0) {
-				int offset;
-				int size;
-				cout << "Offset: ";
-				cin >> offset;
-				cout << "Size: ";
-				cin >> size;
-				cin.ignore();
-				f->readFile(command[2], offset, size);
-			}
-			else
-				cout << "Invalid Mode" << endl;
-
-		}
-
-		else if (command[0].compare("trfile") == 0) {
-			int size;
-			cout << "Size: ";
-			cin >> size;
-			cin.ignore();
-			f->truncate(command[1], size);
-		}
-
-		else if (command[0].compare("wrtfile") == 0) {
-			if (command[1].compare("-o") == 0) {
-				string data;
-				getline(cin, data);
-				f->writeToFile(command[2], data);
-			}
-			else if (command[1].compare("-of") == 0) {
-				int offset;
-				string data;
-				cout << "Offset: ";
-				cin >> offset;
-				cin.ignore();
-				getline(cin, data);
-				f->writeToFile(command[2], data, offset);
-			}
-			else
-				cout << "Invalid Mode" << endl;
-
-		}
-
-		else if (command[0].compare("ls") == 0) {
-			f->listFiles();
-		}
-
-		else if (command[0].compare("map") == 0) {
-			f->showMemoryMap();
-		}
-
-		else if (command[0].compare("exit") == 0) {
-			break;
-		}
-
-		else if (command[0].compare("help") == 0) {
-			cout << "Commands provided are:" << endl;
-			cout << "CD\tDisplays the name of or changes the current directory." << endl;
-			cout << "MKDIR\tCreates a directory." << endl;
-			cout << "MKFILE\tCreates a file in the directory." << endl;
-			cout << "DELFILE\tDeletes the file." << endl;
-			cout << "RDFILE\tReads the file" << endl;
-			cout << "TRFILE\tTruncates the files" << endl;
-			cout << "WRTFILE\tWrites to a file." << endl;
-			cout << "LS\tList all the files" << endl;
-			cout << "MAP\tShows the memory mapping." << endl;
-			cout << "CLS\tClear the screen" << endl;
-			cout << "EXIT\tExit the program" << endl;
-		}
-		else if (command[0].compare("cls") == 0)
-			system("cls");
-		else
-			cout << "'" << command[0] << "'" << " is not recognized as an internal or external command, operable program or batch file." << endl;
-
-	}
-	f->~FileSystem();
-
-
-	//system("cls");
-	
-
-
-	/* f->createDir("Dir 1");
-	f->changeDir("Dir 1");
-	
-	f->createFile("Anas", "Hello my name is Anas");
-	f->createFile("Ahsan", "Hello my name is Ahsan");
-	f->createFile("Muhammad", "Hello my name is Muhammad Bin Jamil");
-	f->createFile("Haseeb", "Hello my name is Haseeb");
-	
-	f->writeToFile("Anas", "I am Anas Tahir");
-	
-	f->delFile("Anas");
-	f->showMemoryMap();
-	
-	f->createFile("Anas Tahir", "I am Anas Tahir");
-	f->writeToFile("Anas Tahir", " version 2");
-	f->showMemoryMap();
-	
-	f->readFile("Anas");
-	f->readFile("Anas Tahir");
-	f->readFile("Haseeb");
-	
-	//f->truncate("Muhammad", 25);
-	f->writeToFile("Muhammad", "I am soota", 10);
-	f->readFile("Muhammad", 0, 25);
-
-	f->showMemoryMap();
-
-
-	f->~FileSystem(); */
+	f->~DistributedFileSystem();
 }
+
+
+
+
 
 
